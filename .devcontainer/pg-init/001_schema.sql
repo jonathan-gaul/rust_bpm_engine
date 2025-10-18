@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS process_definitions (
 CREATE TABLE IF NOT EXISTS process_instances (
   id TEXT PRIMARY KEY,
   process_def_id TEXT NOT NULL REFERENCES process_definitions(id) ON DELETE CASCADE,
-  state TEXT NOT NULL,
+  state JSONB NOT NULL,
   variables JSONB NOT NULL,
   current_node_ids JSONB NOT NULL,
   active_tokens INTEGER NOT NULL,
