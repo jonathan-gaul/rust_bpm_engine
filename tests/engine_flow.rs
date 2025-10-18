@@ -32,7 +32,7 @@ fn command_task_emits_vars_and_mapped() {
     #[cfg(target_os = "windows")]
     let (cmd, args) = ("cmd", vec!["/C", "echo VAR:mykey=hello_world & echo done"]);
 
-    let mut builder = ProcessBuilder::new("test_cmd")
+    let builder = ProcessBuilder::new("test_cmd")
         .add_start("start")
         .add_command_task("emit", "Emit Vars", cmd, args)
         .set_output_mapping("emit", "mykey", "mapped_key")
