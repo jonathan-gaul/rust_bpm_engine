@@ -8,7 +8,7 @@ pub trait TaskHandler {
     fn execute(&self, context: &TaskContext, config: &TaskConfig) -> Result<TaskOutput, String>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum TaskHandlerType {
     Command,
     Http,

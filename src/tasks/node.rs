@@ -5,7 +5,7 @@ use crate::tasks::config::TaskConfig;
 use crate::tasks::handlers::TaskHandlerType;
 
 // Node types in our workflow
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum NodeType {
     Start,
     Task { 
@@ -19,7 +19,7 @@ pub enum NodeType {
 }
 
 // A node in the process definition
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Node {
     pub id: String,
     pub node_type: NodeType,

@@ -1,6 +1,9 @@
 use std::collections::HashMap;
+use std::sync::Arc;
+use crate::persistence::InstanceStore;
 
 mod tasks;
+mod persistence;
 use tasks::node::Node;
 use tasks::node::NodeType;
 use tasks::context::TaskContext;
@@ -11,7 +14,7 @@ use tasks::handlers::TaskHandlerType;
 use tasks::handlers::command::CommandTaskHandler;
 
 // Process definition - the blueprint
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProcessDefinition {
     id: String,
     nodes: HashMap<String, Node>,
@@ -19,7 +22,7 @@ pub struct ProcessDefinition {
 }
 
 // Process instance - a running execution
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProcessInstance {
     id: String,
     process_def_id: String,
@@ -30,7 +33,7 @@ pub struct ProcessInstance {
     join_counters: HashMap<String, usize>, // Track how many tokens arrived at each join
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ProcessState {
     Running,
     Completed,
@@ -41,6 +44,7 @@ pub enum ProcessState {
 pub struct ProcessEngine {
     definitions: HashMap<String, ProcessDefinition>,
     instances: HashMap<String, ProcessInstance>,
+    async_store: Option<Arc<dyn InstanceStore>>,
 }
 
 impl ProcessEngine {
@@ -48,6 +52,15 @@ impl ProcessEngine {
         ProcessEngine {
             definitions: HashMap::new(),
             instances: HashMap::new(),
+            async_store: None,
+        }
+    }
+
+    pub fn with_async_store(store: Arc<dyn InstanceStore>) -> Self {
+        ProcessEngine {
+            definitions: HashMap::new(),
+            instances: HashMap::new(),
+            async_store: Some(store),
         }
     }
 
@@ -73,10 +86,52 @@ impl ProcessEngine {
 
         println!("Starting process instance: {}", instance_id);
         self.instances.insert(instance_id.clone(), instance);
-        
-        // Execute from start
+        // If async store is present, persist instance (fire-and-forget is OK here but we await)
+        if let Some(store) = &self.async_store {
+            let inst = self.instances.get(&instance_id).unwrap().clone();
+            // spawn a background task to save (best-effort)
+            let store = store.clone();
+            let id = instance_id.clone();
+            // We'll block here by using tokio::spawn; user must call start_process_async for full async behavior
+            let _ = tokio::spawn(async move {
+                let _ = store.save_instance(&inst).await;
+                let _ = id;
+            });
+        }
+
+        // Execute from start (sync)
         self.execute_instance(&instance_id)?;
         
+        Ok(instance_id)
+    }
+
+    /// Async start: fully async and persists via configured async store if present
+    pub async fn start_process_async(&mut self, process_def_id: &str) -> Result<String, String> {
+        let definition = self.definitions.get(process_def_id)
+            .ok_or_else(|| format!("Process definition '{}' not found", process_def_id))?;
+
+        let instance_id = format!("instance_{}", uuid::Uuid::new_v4());
+        let instance = ProcessInstance {
+            id: instance_id.clone(),
+            process_def_id: process_def_id.to_string(),
+            current_node_ids: vec![definition.start_node_id.clone()],
+            state: ProcessState::Running,
+            variables: HashMap::new(),
+            active_tokens: 1,
+            join_counters: HashMap::new(),
+        };
+
+        println!("Starting process instance: {}", instance_id);
+        self.instances.insert(instance_id.clone(), instance);
+
+        if let Some(store) = &self.async_store {
+            let inst = self.instances.get(&instance_id).unwrap().clone();
+            store.save_instance(&inst).await?;
+        }
+
+        // Execute the instance asynchronously
+        self.execute_instance_async(&instance_id).await?;
+
         Ok(instance_id)
     }
 
@@ -219,6 +274,164 @@ impl ProcessEngine {
                     instance.active_tokens -= 1;
                     if instance.active_tokens == 0 {
                         instance.state = ProcessState::Completed;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Async execute instance: mirrors execute_instance but persists via async_store after task output application
+    pub async fn execute_instance_async(&mut self, instance_id: &str) -> Result<(), String> {
+        loop {
+            let instance = self.instances.get(instance_id)
+                .ok_or_else(|| format!("Instance '{}' not found", instance_id))?;
+
+            if instance.state != ProcessState::Running {
+                break;
+            }
+
+            if instance.current_node_ids.is_empty() {
+                break;
+            }
+
+            // Process one token at a time
+            let current_node_id = instance.current_node_ids[0].clone();
+            let process_def_id = instance.process_def_id.clone();
+
+            // Clone the node data we need before any mutable operations
+            let (node_id, node_type, outgoing, incoming_count) = {
+                let definition = self.definitions.get(&process_def_id)
+                    .ok_or_else(|| "Process definition not found".to_string())?;
+
+                let node = definition.nodes.get(&current_node_id)
+                    .ok_or_else(|| format!("Node '{}' not found", current_node_id))?;
+
+                // Count incoming edges for join detection
+                let incoming = definition.nodes.values()
+                    .filter(|n| n.outgoing.contains(&current_node_id))
+                    .count();
+
+                (node.id.clone(), node.node_type.clone(), node.outgoing.clone(), incoming)
+            };
+
+            println!("Executing node: {} ({:?})", node_id, node_type);
+
+            // Remove current token
+            let instance = self.instances.get_mut(instance_id).unwrap();
+            instance.current_node_ids.remove(0);
+
+            // Execute the node based on type
+            match &node_type {
+                NodeType::Start => {
+                    println!("  -> Process started");
+                    self.advance_token(instance_id, &outgoing)?;
+                }
+                NodeType::Task { name, handler_type, config } => {
+                    println!("  -> Executing task: {}", name);
+                    
+                    // Check if this is a placeholder task (no handler configured)
+                    let is_placeholder = match handler_type {
+                        TaskHandlerType::Command => config.command.is_none(),
+                        _ => true,
+                    };
+                    
+                    if is_placeholder {
+                        println!("    [PLACEHOLDER] No handler configured, skipping execution");
+                        self.advance_token(instance_id, &outgoing)?;
+                        continue;
+                    }
+                    
+                    // Create task context with current variables
+                    let task_context = TaskContext {
+                        variables: self.instances.get(instance_id).unwrap().variables.clone(),
+                    };
+                    
+                    // Execute based on handler type
+                    let task_output = match handler_type {
+                        TaskHandlerType::Command => {
+                            CommandTaskHandler.execute(&task_context, config)?
+                        }
+                        TaskHandlerType::Function => {
+                            return Err("Function handler not yet wired up".to_string());
+                        }
+                        _ => {
+                            return Err(format!("Handler type {:?} not implemented", handler_type));
+                        }
+                    };
+                    
+                    // Apply output mappings to process variables
+                    let instance = self.instances.get_mut(instance_id).unwrap();
+                    for (task_var, process_var) in &config.output_mappings {
+                        if let Some(value) = task_output.variables.get(task_var) {
+                            let preview = if value.len() > 50 {
+                                format!("{}... ({} bytes)", &value[..50], value.len())
+                            } else {
+                                value.clone()
+                            };
+                            println!("    [VAR] Setting {} = {}", process_var, preview.lines().next().unwrap_or(&preview));
+                            instance.variables.insert(process_var.clone(), value.clone());
+                        }
+                    }
+                    
+                    if !task_output.success {
+                        println!("    [ERROR] Task failed: {:?}", task_output.message);
+                    }
+
+                    // Persist instance after task if store present
+                    if let Some(store) = &self.async_store {
+                        let inst = self.instances.get(instance_id).unwrap().clone();
+                        store.update_instance(&inst).await?;
+                    }
+                    
+                    self.advance_token(instance_id, &outgoing)?;
+                }
+                NodeType::ExclusiveGateway => {
+                    println!("  -> Exclusive gateway (taking first path)");
+                    // Simple: take first outgoing. Real impl would evaluate conditions
+                    if !outgoing.is_empty() {
+                        let next = vec![outgoing[0].clone()];
+                        self.advance_token(instance_id, &next)?;
+                    }
+                }
+                NodeType::ParallelGateway => {
+                    if outgoing.len() > 1 {
+                        // Fork: create multiple tokens
+                        println!("  -> Parallel gateway: FORK ({} paths)", outgoing.len());
+                        self.advance_token(instance_id, &outgoing)?;
+                    } else if incoming_count > 1 {
+                        // Join: wait for all incoming tokens
+                        let instance = self.instances.get_mut(instance_id).unwrap();
+                        let counter = instance.join_counters.entry(node_id.clone()).or_insert(0);
+                        *counter += 1;
+                        
+                        println!("  -> Parallel gateway: JOIN (token {}/{})", counter, incoming_count);
+                        
+                        if *counter == incoming_count {
+                            // All tokens arrived, proceed
+                            println!("  -> All paths converged, continuing");
+                            instance.join_counters.remove(&node_id);
+                            instance.active_tokens -= incoming_count - 1; // Merge tokens
+                            self.advance_token(instance_id, &outgoing)?;
+                        }
+                        // Otherwise, just consume this token and wait
+                    } else {
+                        // Simple pass-through
+                        println!("  -> Parallel gateway: PASS-THROUGH");
+                        self.advance_token(instance_id, &outgoing)?;
+                    }
+                }
+                NodeType::End => {
+                    println!("  -> Process completed");
+                    let instance = self.instances.get_mut(instance_id).unwrap();
+                    instance.active_tokens -= 1;
+                    if instance.active_tokens == 0 {
+                        instance.state = ProcessState::Completed;
+                        if let Some(store) = &self.async_store {
+                            let inst = instance.clone();
+                            store.update_instance(&inst).await?;
+                        }
                     }
                 }
             }

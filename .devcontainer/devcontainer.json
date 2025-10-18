@@ -1,0 +1,23 @@
+{
+  "name": "rustbpm - Rust + Postgres",
+  "dockerComposeFile": ["docker-compose.yml"],
+  "service": "devcontainer",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "vscode",
+  "forwardPorts": [5432],
+  "postCreateCommand": "cargo build",
+  "containerEnv": {
+    "DATABASE_URL": "postgres://dev:example@postgres:5432/rustbpm"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "terminal.integrated.shell.linux": "/bin/bash"
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+version: '3.8'
+services:
+  devcontainer:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ..:/workspace:cached
+    depends_on:
+      - postgres
+    environment:
+      - DATABASE_URL=postgres://dev:example@postgres:5432/rustbpm
+    ports:
+      - "0:0"
+
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: example
+      POSTGRES_DB: rustbpm
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pg-init:/docker-entrypoint-initdb.d:ro
