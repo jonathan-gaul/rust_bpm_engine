@@ -531,3 +531,6 @@ fn main() {
 // Note: This requires uuid crate. Add to Cargo.toml:
 // [dependencies]
 // uuid = { version = "1.0", features = ["v4"] }
+
+
+// Process execution unit tests were moved to integration tests under `tests/`.

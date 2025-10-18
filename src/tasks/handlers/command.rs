@@ -88,3 +88,5 @@ impl TaskHandler for CommandTaskHandler {
         })
     }
 }
+
+// CommandTaskHandler unit tests were moved to integration tests under `tests/`.
