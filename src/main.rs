@@ -20,7 +20,10 @@ async fn main() {
                     .build()
                     .expect("Failed to build process");
 
-                engine.deploy(process);
+                // Persist the definition synchronously via the async store before starting
+                if let Err(e) = engine.deploy_async(process).await {
+                    println!("Failed to persist definition: {}", e);
+                }
 
                 match engine.start_process_async("async_example").await {
                     Ok(id) => println!("✓ Async instance {} completed", id),

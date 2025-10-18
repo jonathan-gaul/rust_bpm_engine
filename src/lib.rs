@@ -80,6 +80,19 @@ impl ProcessEngine {
         }
     }
 
+    /// Async deploy: persist the definition via the async store and insert into memory.
+    pub async fn deploy_async(&mut self, definition: ProcessDefinition) -> Result<(), String> {
+        println!("Deploying process (async): {}", definition.id);
+        // Insert into memory
+        self.definitions.insert(definition.id.clone(), definition.clone());
+
+        if let Some(store) = &self.async_store {
+            store.save_definition(&definition).await?;
+        }
+
+        Ok(())
+    }
+
     pub fn start_process(&mut self, process_def_id: &str) -> Result<String, String> {
         let definition = self.definitions.get(process_def_id)
             .ok_or_else(|| format!("Process definition '{}' not found", process_def_id))?;
