@@ -116,9 +116,9 @@ fn main() {
     match engine.start_process("command_process") {
         Ok(instance_id) => {
             println!("✓ Instance {} completed", instance_id);
-            if let Some(instance) = engine.instances.get(&instance_id) {
+            if let Some(vars) = engine.get_instance_variables(&instance_id) {
                 println!("Final variables:");
-                for (key, value) in &instance.variables {
+                for (key, value) in vars {
                     println!("  {} = {}", key, value.lines().next().unwrap_or(value));
                 }
                 println!();
@@ -152,11 +152,11 @@ fn main() {
     match engine.start_process("multi_var_process") {
         Ok(instance_id) => {
             println!("✓ Instance {} completed", instance_id);
-            if let Some(instance) = engine.instances.get(&instance_id) {
+            if let Some(vars) = engine.get_instance_variables(&instance_id) {
                 println!("User Information:");
-                println!("  ID:    {}", instance.variables.get("user_id").unwrap_or(&"N/A".to_string()));
-                println!("  Name:  {}", instance.variables.get("user_name").unwrap_or(&"N/A".to_string()));
-                println!("  Email: {}", instance.variables.get("user_email").unwrap_or(&"N/A".to_string()));
+                println!("  ID:    {}", vars.get("user_id").unwrap_or(&"N/A".to_string()));
+                println!("  Name:  {}", vars.get("user_name").unwrap_or(&"N/A".to_string()));
+                println!("  Email: {}", vars.get("user_email").unwrap_or(&"N/A".to_string()));
             }
         }
         Err(e) => println!("Error: {}", e),

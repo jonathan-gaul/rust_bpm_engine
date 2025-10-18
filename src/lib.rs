@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-pub mod tasks;
+mod tasks;
 use tasks::node::Node;
 use tasks::node::NodeType;
 use tasks::context::TaskContext;
@@ -13,21 +13,21 @@ use tasks::handlers::command::CommandTaskHandler;
 // Process definition - the blueprint
 #[derive(Debug, Clone)]
 pub struct ProcessDefinition {
-    pub id: String,
-    pub nodes: HashMap<String, Node>,
-    pub start_node_id: String,
+    id: String,
+    nodes: HashMap<String, Node>,
+    start_node_id: String,
 }
 
 // Process instance - a running execution
 #[derive(Debug, Clone)]
 pub struct ProcessInstance {
-    pub id: String,
-    pub process_def_id: String,
-    pub current_node_ids: Vec<String>, // Multiple for parallel execution
-    pub state: ProcessState,
-    pub variables: HashMap<String, String>,
-    pub active_tokens: usize, // For tracking parallel paths
-    pub join_counters: HashMap<String, usize>, // Track how many tokens arrived at each join
+    id: String,
+    process_def_id: String,
+    current_node_ids: Vec<String>, // Multiple for parallel execution
+    state: ProcessState,
+    variables: HashMap<String, String>,
+    active_tokens: usize, // For tracking parallel paths
+    join_counters: HashMap<String, usize>, // Track how many tokens arrived at each join
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -39,8 +39,8 @@ pub enum ProcessState {
 
 // The execution engine
 pub struct ProcessEngine {
-    pub definitions: HashMap<String, ProcessDefinition>,
-    pub instances: HashMap<String, ProcessInstance>,
+    definitions: HashMap<String, ProcessDefinition>,
+    instances: HashMap<String, ProcessInstance>,
 }
 
 impl ProcessEngine {
@@ -243,12 +243,18 @@ impl ProcessEngine {
         Ok(())
     }
 
-    pub fn get_instance_state(&self, instance_id: &str) -> Option<&ProcessState> {
-        self.instances.get(instance_id).map(|i| &i.state)
-    }
-
     pub fn get_instance(&self, instance_id: &str) -> Option<&ProcessInstance> {
         self.instances.get(instance_id)
+    }
+
+    /// Return a reference to the variables map for an instance (read-only)
+    pub fn get_instance_variables(&self, instance_id: &str) -> Option<&HashMap<String, String>> {
+        self.instances.get(instance_id).map(|i| &i.variables)
+    }
+
+    /// Return the state of an instance
+    pub fn get_instance_state(&self, instance_id: &str) -> Option<&ProcessState> {
+        self.instances.get(instance_id).map(|i| &i.state)
     }
 }
 
