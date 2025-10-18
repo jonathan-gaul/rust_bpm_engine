@@ -64,28 +64,14 @@ impl ProcessEngine {
         }
     }
 
-    pub fn deploy(&mut self, definition: ProcessDefinition) {
+    /// Deploy a process definition into the engine and persist it if an async store is configured.
+    /// This library is async-only: deployments are awaited when a store is present.
+    pub async fn deploy(&mut self, definition: ProcessDefinition) -> Result<(), String> {
         println!("Deploying process: {}", definition.id);
         // Insert into in-memory definitions
         self.definitions.insert(definition.id.clone(), definition.clone());
 
-        // If an async store is configured, persist the definition in the background
-        if let Some(store) = &self.async_store {
-            let store = store.clone();
-            // Clone the definition for the background task
-            let def = definition.clone();
-            let _ = tokio::spawn(async move {
-                let _ = store.save_definition(&def).await;
-            });
-        }
-    }
-
-    /// Async deploy: persist the definition via the async store and insert into memory.
-    pub async fn deploy_async(&mut self, definition: ProcessDefinition) -> Result<(), String> {
-        println!("Deploying process (async): {}", definition.id);
-        // Insert into memory
-        self.definitions.insert(definition.id.clone(), definition.clone());
-
+        // If an async store is configured, persist the definition and await completion
         if let Some(store) = &self.async_store {
             store.save_definition(&definition).await?;
         }
@@ -93,44 +79,8 @@ impl ProcessEngine {
         Ok(())
     }
 
-    pub fn start_process(&mut self, process_def_id: &str) -> Result<String, String> {
-        let definition = self.definitions.get(process_def_id)
-            .ok_or_else(|| format!("Process definition '{}' not found", process_def_id))?;
-
-        let instance_id = format!("instance_{}", uuid::Uuid::new_v4());
-        let instance = ProcessInstance {
-            id: instance_id.clone(),
-            process_def_id: process_def_id.to_string(),
-            current_node_ids: vec![definition.start_node_id.clone()],
-            state: ProcessState::Running,
-            variables: HashMap::new(),
-            active_tokens: 1,
-            join_counters: HashMap::new(),
-        };
-
-        println!("Starting process instance: {}", instance_id);
-        self.instances.insert(instance_id.clone(), instance);
-        // If async store is present, persist instance (fire-and-forget is OK here but we await)
-        if let Some(store) = &self.async_store {
-            let inst = self.instances.get(&instance_id).unwrap().clone();
-            // spawn a background task to save (best-effort)
-            let store = store.clone();
-            let id = instance_id.clone();
-            // We'll block here by using tokio::spawn; user must call start_process_async for full async behavior
-            let _ = tokio::spawn(async move {
-                let _ = store.save_instance(&inst).await;
-                let _ = id;
-            });
-        }
-
-        // Execute from start (sync)
-        self.execute_instance(&instance_id)?;
-        
-        Ok(instance_id)
-    }
-
-    /// Async start: fully async and persists via configured async store if present
-    pub async fn start_process_async(&mut self, process_def_id: &str) -> Result<String, String> {
+    /// Start a new process instance (async-only). Persists the instance via the configured store if present.
+    pub async fn start_process(&mut self, process_def_id: &str) -> Result<String, String> {
         let definition = self.definitions.get(process_def_id)
             .ok_or_else(|| format!("Process definition '{}' not found", process_def_id))?;
 
@@ -149,7 +99,7 @@ impl ProcessEngine {
         self.instances.insert(instance_id.clone(), instance);
 
         // If an async store is configured, persist the instance. Process definitions
-        // are persisted during `deploy` (so they exist before instances are created).
+        // are expected to be persisted during `deploy`.
         if let Some(store) = &self.async_store {
             let inst = self.instances.get(&instance_id).unwrap().clone();
             store.save_instance(&inst).await?;
@@ -161,7 +111,8 @@ impl ProcessEngine {
         Ok(instance_id)
     }
 
-    pub fn execute_instance(&mut self, instance_id: &str) -> Result<(), String> {
+    /// Execute an instance (async-only). Mirrors previous sync behavior but is async.
+    pub async fn execute_instance(&mut self, instance_id: &str) -> Result<(), String> {
         loop {
             let instance = self.instances.get(instance_id)
                 .ok_or_else(|| format!("Instance '{}' not found", instance_id))?;
@@ -256,6 +207,12 @@ impl ProcessEngine {
                     if !task_output.success {
                         println!("    [ERROR] Task failed: {:?}", task_output.message);
                     }
+
+                    // Persist instance after task if store present
+                    if let Some(store) = &self.async_store {
+                        let inst = self.instances.get(instance_id).unwrap().clone();
+                        store.update_instance(&inst).await?;
+                    }
                     
                     self.advance_token(instance_id, &outgoing)?;
                 }
@@ -300,6 +257,10 @@ impl ProcessEngine {
                     instance.active_tokens -= 1;
                     if instance.active_tokens == 0 {
                         instance.state = ProcessState::Completed;
+                        if let Some(store) = &self.async_store {
+                            let inst = instance.clone();
+                            store.update_instance(&inst).await?;
+                        }
                     }
                 }
             }

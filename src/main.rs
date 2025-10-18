@@ -20,12 +20,12 @@ async fn main() {
                     .build()
                     .expect("Failed to build process");
 
-                // Persist the definition synchronously via the async store before starting
-                if let Err(e) = engine.deploy_async(process).await {
+                // Persist the definition via the async store before starting
+                if let Err(e) = engine.deploy(process).await {
                     println!("Failed to persist definition: {}", e);
                 }
 
-                match engine.start_process_async("async_example").await {
+                match engine.start_process("async_example").await {
                     Ok(id) => println!("✓ Async instance {} completed", id),
                     Err(e) => println!("Error starting async instance: {}", e),
                 }
@@ -51,9 +51,11 @@ async fn main() {
         .expect("Failed to build process");
 
     let mut engine = ProcessEngine::new();
-    engine.deploy(process1);
+    if let Err(e) = engine.deploy(process1).await {
+        println!("Error deploying process1: {}", e);
+    }
 
-    match engine.start_process("simple_process") {
+    match engine.start_process("simple_process").await {
         Ok(instance_id) => {
             println!("✓ Instance {} completed\n", instance_id);
         }
@@ -81,9 +83,11 @@ async fn main() {
         .build()
         .expect("Failed to build parallel process");
 
-    engine.deploy(process2);
+    if let Err(e) = engine.deploy(process2).await {
+        println!("Error deploying process2: {}", e);
+    }
 
-    match engine.start_process("parallel_process") {
+    match engine.start_process("parallel_process").await {
         Ok(instance_id) => {
             println!("✓ Instance {} completed\n", instance_id);
         }
@@ -108,9 +112,11 @@ async fn main() {
         .build()
         .expect("Failed to build conditional process");
 
-    engine.deploy(process3);
+    if let Err(e) = engine.deploy(process3).await {
+        println!("Error deploying process3: {}", e);
+    }
 
-    match engine.start_process("conditional_process") {
+    match engine.start_process("conditional_process").await {
         Ok(instance_id) => {
             println!("✓ Instance {} completed\n", instance_id);
         }
@@ -145,9 +151,11 @@ async fn main() {
         .build()
         .expect("Failed to build command process");
 
-    engine.deploy(process4);
+    if let Err(e) = engine.deploy(process4).await {
+        println!("Error deploying process4: {}", e);
+    }
 
-    match engine.start_process("command_process") {
+    match engine.start_process("command_process").await {
         Ok(instance_id) => {
             println!("✓ Instance {} completed", instance_id);
             if let Some(vars) = engine.get_instance_variables(&instance_id) {
@@ -181,9 +189,11 @@ async fn main() {
         .build()
         .expect("Failed to build multi-var process");
 
-    engine.deploy(process5);
+    if let Err(e) = engine.deploy(process5).await {
+        println!("Error deploying process5: {}", e);
+    }
 
-    match engine.start_process("multi_var_process") {
+    match engine.start_process("multi_var_process").await {
         Ok(instance_id) => {
             println!("✓ Instance {} completed", instance_id);
             if let Some(vars) = engine.get_instance_variables(&instance_id) {

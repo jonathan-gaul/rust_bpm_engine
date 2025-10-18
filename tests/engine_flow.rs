@@ -1,8 +1,8 @@
 use bpm_engine::{ProcessBuilder, ProcessEngine, ProcessState};
 
 // Test that a simple process with a placeholder task completes
-#[test]
-fn placeholder_task_completes() {
+#[tokio::test]
+async fn placeholder_task_completes() {
     let process = ProcessBuilder::new("test_simple")
         .add_start("start")
         .add_task("noop", "Noop Task")
@@ -13,9 +13,9 @@ fn placeholder_task_completes() {
         .expect("failed to build process");
 
     let mut engine = ProcessEngine::new();
-    engine.deploy(process);
+    engine.deploy(process).await.expect("deploy failed");
 
-    let instance_id = engine.start_process("test_simple").expect("start failed");
+    let instance_id = engine.start_process("test_simple").await.expect("start failed");
 
     // After running, instance should be completed
     let state = engine.get_instance_state(&instance_id).expect("no state");
@@ -23,8 +23,8 @@ fn placeholder_task_completes() {
 }
 
 // Test that a command task can emit VAR:key=value which is mapped into process variables
-#[test]
-fn command_task_emits_vars_and_mapped() {
+#[tokio::test]
+async fn command_task_emits_vars_and_mapped() {
     // Use /bin/sh -c on unix-like systems
     #[cfg(not(target_os = "windows"))]
     let (cmd, args) = ("sh", vec!["-c", "echo VAR:mykey=hello_world; echo done"]);
@@ -43,9 +43,9 @@ fn command_task_emits_vars_and_mapped() {
     let process = builder.build().expect("build failed");
 
     let mut engine = ProcessEngine::new();
-    engine.deploy(process);
+    engine.deploy(process).await.expect("deploy failed");
 
-    let instance_id = engine.start_process("test_cmd").expect("start failed");
+    let instance_id = engine.start_process("test_cmd").await.expect("start failed");
 
     // Verify variable mapping applied
     let vars = engine.get_instance_variables(&instance_id).expect("no vars");
@@ -54,8 +54,8 @@ fn command_task_emits_vars_and_mapped() {
 }
 
 // Test parallel fork/join semantics: fork into two placeholder tasks and join back
-#[test]
-fn parallel_fork_join_completes() {
+#[tokio::test]
+async fn parallel_fork_join_completes() {
     let process = ProcessBuilder::new("test_parallel")
         .add_start("start")
         .add_parallel_gateway("fork")
@@ -73,16 +73,16 @@ fn parallel_fork_join_completes() {
         .expect("failed to build process");
 
     let mut engine = ProcessEngine::new();
-    engine.deploy(process);
+    engine.deploy(process).await.expect("deploy failed");
 
-    let instance_id = engine.start_process("test_parallel").expect("start failed");
+    let instance_id = engine.start_process("test_parallel").await.expect("start failed");
 
     let state = engine.get_instance_state(&instance_id).expect("no state");
     assert_eq!(state, &ProcessState::Completed);
 }
 
-#[test]
-fn parallel_tokens_and_join_counters() {
+#[tokio::test]
+async fn parallel_tokens_and_join_counters() {
     // Build a process with fork and join, same as previous test
     let process = ProcessBuilder::new("test_parallel2")
         .add_start("start")
@@ -101,9 +101,9 @@ fn parallel_tokens_and_join_counters() {
         .expect("failed to build process");
 
     let mut engine = ProcessEngine::new();
-    engine.deploy(process);
+    engine.deploy(process).await.expect("deploy failed");
 
-    let instance_id = engine.start_process("test_parallel2").expect("start failed");
+    let instance_id = engine.start_process("test_parallel2").await.expect("start failed");
 
     // After starting the instance the engine processes synchronously; expect completion
     assert_eq!(engine.get_instance_state(&instance_id).unwrap(), &ProcessState::Completed);
