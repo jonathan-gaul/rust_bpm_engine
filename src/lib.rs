@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::persistence::InstanceStore;
 
 mod tasks;
-mod persistence;
+pub mod persistence;
 use tasks::node::Node;
 use tasks::node::NodeType;
 use tasks::context::TaskContext;
@@ -66,7 +66,18 @@ impl ProcessEngine {
 
     pub fn deploy(&mut self, definition: ProcessDefinition) {
         println!("Deploying process: {}", definition.id);
-        self.definitions.insert(definition.id.clone(), definition);
+        // Insert into in-memory definitions
+        self.definitions.insert(definition.id.clone(), definition.clone());
+
+        // If an async store is configured, persist the definition in the background
+        if let Some(store) = &self.async_store {
+            let store = store.clone();
+            // Clone the definition for the background task
+            let def = definition.clone();
+            let _ = tokio::spawn(async move {
+                let _ = store.save_definition(&def).await;
+            });
+        }
     }
 
     pub fn start_process(&mut self, process_def_id: &str) -> Result<String, String> {
@@ -124,6 +135,8 @@ impl ProcessEngine {
         println!("Starting process instance: {}", instance_id);
         self.instances.insert(instance_id.clone(), instance);
 
+        // If an async store is configured, persist the instance. Process definitions
+        // are persisted during `deploy` (so they exist before instances are created).
         if let Some(store) = &self.async_store {
             let inst = self.instances.get(&instance_id).unwrap().clone();
             store.save_instance(&inst).await?;

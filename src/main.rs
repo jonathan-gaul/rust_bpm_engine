@@ -1,6 +1,37 @@
-use bpm_engine::{ProcessBuilder, ProcessEngine};
+use bpm_engine::{ProcessBuilder, ProcessEngine, persistence};
+use std::env;
 
-fn main() {
+#[tokio::main]
+async fn main() {
+    // Example 0: Async start using a real Postgres store (assumes DATABASE_URL is set)
+    if let Ok(database_url) = env::var("DATABASE_URL") {
+        println!("--- Example 0: Async start with SQLx store ---");
+        match persistence::sqlx::SqlxPostgresStore::new(&database_url).await {
+            Ok(store) => {
+                let store = std::sync::Arc::new(store);
+                let mut engine = ProcessEngine::with_async_store(store);
+
+                let process = ProcessBuilder::new("async_example")
+                    .add_start("start")
+                    .add_task("task", "Async Task")
+                    .add_end("end")
+                    .connect("start", "task")
+                    .connect("task", "end")
+                    .build()
+                    .expect("Failed to build process");
+
+                engine.deploy(process);
+
+                match engine.start_process_async("async_example").await {
+                    Ok(id) => println!("✓ Async instance {} completed", id),
+                    Err(e) => println!("Error starting async instance: {}", e),
+                }
+            }
+            Err(e) => println!("Failed to create SQLx store: {}", e),
+        }
+    }
+
+    use bpm_engine::{ProcessBuilder, ProcessEngine};
     println!("=== Simple BPM Engine PoC ===\n");
 
     // Example 1: Simple sequential process
