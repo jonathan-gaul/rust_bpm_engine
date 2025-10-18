@@ -469,6 +469,16 @@ impl ProcessEngine {
     pub fn get_instance_state(&self, instance_id: &str) -> Option<&ProcessState> {
         self.instances.get(instance_id).map(|i| &i.state)
     }
+
+    /// Return the number of active tokens for an instance (for testing/inspection)
+    pub fn get_active_tokens(&self, instance_id: &str) -> Option<usize> {
+        self.instances.get(instance_id).map(|i| i.active_tokens)
+    }
+
+    /// Return the join counter for a specific node of an instance (if any)
+    pub fn get_join_counter(&self, instance_id: &str, node_id: &str) -> Option<usize> {
+        self.instances.get(instance_id).and_then(|i| i.join_counters.get(node_id).cloned())
+    }
 }
 
 // Helper to build process definitions
