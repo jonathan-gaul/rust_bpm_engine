@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use crate::{ProcessInstance, ProcessDefinition};
+use crate::{ProcessInstance, ProcessDefinition, ProcessState};
 
 pub mod sqlx;
 

@@ -5,7 +5,7 @@
   "workspaceFolder": "/workspace",
   "remoteUser": "vscode",
   "forwardPorts": [5432],
-  "postCreateCommand": "cargo build",
+  "postCreateCommand": "rustup default stable || rustup install stable && rustup default stable && cargo build",
   "containerEnv": {
     "DATABASE_URL": "postgres://dev:example@postgres:5432/rustbpm"
   },

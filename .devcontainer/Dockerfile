@@ -18,3 +18,6 @@ WORKDIR /workspace
 
 ENV CARGO_HOME=/home/vscode/.cargo
 ENV RUSTUP_HOME=/home/vscode/.rustup
+
+# Keep the container running so the VS Code remote extension can attach
+CMD ["sleep", "infinity"]

@@ -10,8 +10,7 @@ services:
       - postgres
     environment:
       - DATABASE_URL=postgres://dev:example@postgres:5432/rustbpm
-    ports:
-      - "0:0"
+    # devcontainer doesn't need host port mappings; the editor connects via Docker
 
   postgres:
     image: postgres:15-alpine
