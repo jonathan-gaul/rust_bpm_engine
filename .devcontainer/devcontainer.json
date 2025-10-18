@@ -7,7 +7,8 @@
   "forwardPorts": [5432],
   "postCreateCommand": "rustup default stable || rustup install stable && rustup default stable && cargo build",
   "containerEnv": {
-    "DATABASE_URL": "postgres://dev:example@postgres:5432/rustbpm"
+    "DATABASE_URL": "postgres://dev:example@postgres:5432/rustbpm",
+    "LANG": "en_US.UTF-8"
   },
   "customizations": {
     "vscode": {
